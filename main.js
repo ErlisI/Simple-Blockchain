@@ -8,11 +8,11 @@ class Block {
         this.timestamp = timestamp; // When the block was created
         this.data = data; // Details of the transaction (for a currency)
         this.prevHash = prevHash; // String that contains the hash of the block before this one
-        this.hash = this.calculateHas(); // Hash of the block
+        this.hash = this.calculateHash(); // Hash of the block
     }
 
     // Calculate the hash of the block
-    calculateHas() {
+    calculateHash() {
         return SHA256(this.index + this.prevHash + this.timestamp + JSON.stringify(this.data)).toString();
     }
 }
@@ -38,7 +38,7 @@ class Blockchain {
         newBlock.timestamp = new Date();
         newBlock.index = this.getLatestBlock().index + 1;
         newBlock.prevHash = this.getLatestBlock().hash;
-        newBlock.hash = newBlock.calculateHas();
+        newBlock.hash = newBlock.calculateHash();
         this.chain.push(newBlock);
     }
 
@@ -49,7 +49,7 @@ class Blockchain {
             const prevBlock = this.chain[i - 1];
 
             // Check if the current block's hash is correct
-            if(currBlock.hash !== currBlock.calculateHas())
+            if(currBlock.hash !== currBlock.calculateHash())
                 return false;
 
             // Check if the previous block's hash is correct
