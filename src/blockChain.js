@@ -1,5 +1,6 @@
-import sha256 from 'crypto-js';
-const { SHA256 } = sha256;
+const SHA256 = require('crypto-js/sha256');
+const EC = require('elliptic').ec;
+const ec = new EC('secp256k1');
 
 class Transaction {
     // Initialize the transaction
@@ -8,7 +9,32 @@ class Transaction {
         this.toAddr = toAddr; // Address of the receiver
         this.amount = amount; // Amount of currency being sent
     }
+
+    // Calculate the hash of the transaction
+    calculateHash() {
+        return SHA256(this.fromAddr + this.toAddr + this.amount).toString();
+    }
+
+    // Sign the transaction
+    signTransaction(signingKey) {
+        if (signingKey.getPublic('hex') !== this.fromAddr)
+            throw new Error('You cannot sign transactions for other wallets!');
+        const hashTx = this.calculateHash();
+        const sig = signingKey.sign(hashTx, 'base64');
+        this.signature = sig.toDER('hex');
+    }
+
+    // Check if the transaction is valid
+    isValid() {
+        if (this.fromAddr === null)
+            return true;
+        if (!this.signature || this.signature.length === 0)
+            throw new Error('No signature in this transaction!');
+        const publicKey = ec.keyFromPublic(this.fromAddr, 'hex');
+        return publicKey.verify(this.calculateHash(), this.signature);
+    }
 }
+
 class Block {
     // Initialize the block
     constructor(timestamp, transactions, prevHash = '') {
@@ -32,15 +58,24 @@ class Block {
         }
         console.log("Block mined: " + this.hash);
     }
+
+    // Check if the transactions in the block are valid
+    hasValidTransactions() {
+        for (const t of this.transactions) {
+            if (!t.isValid())
+                return false;
+        }
+        return true;
+    }
 }
 
 class Blockchain {
     // Initialize the blockchain
     constructor() {
         this.chain = [this.createGenesisBlock()]; // First block in the chain is the genesis block
-        this.diff = 10; // Difficulty of mining the block
+        this.diff = 1; // Difficulty of mining the block
         this.pendingTransactions = []; // Transactions that are waiting to be mined
-        this.miningReward = 1; // Reward for mining a block
+        this.miningReward = 10; // Reward for mining a block
     }
 
     // Create the genesis block
@@ -55,6 +90,9 @@ class Blockchain {
 
     // Mine the pending transactions
     minePendingTransactions(miningRewardAddr) {
+        const rewardTransaction = new Transaction(null, miningRewardAddr, this.miningReward);
+        this.pendingTransactions.push(rewardTransaction);
+
         let block = new Block(Date.now(), this.pendingTransactions);
         block.mineBlock(this.diff);
 
@@ -67,12 +105,20 @@ class Blockchain {
     }
 
     // Add a new transaction to the pending transactions
-    createTransaction(transaction) {
+    addTransaction(transaction) {
+        if (!transaction.fromAddr || !transaction.toAddr)
+            throw new Error('Transaction must include from and to address!');
+
+        if (!transaction.isValid())
+            throw new Error('Cannot add invalid transaction to chain!');
+
         this.pendingTransactions.push(transaction);
     }
 
     // Get the balance of an address
     getBalanceOfAddr(addr) {
+        let balance = 0;
+
         for (const block of this.chain) {
             for (const t of block.transactions) {
                 if (t.fromAddr === addr)
@@ -90,6 +136,10 @@ class Blockchain {
             const currBlock = this.chain[i];
             const prevBlock = this.chain[i - 1];
 
+            // Check if the transactions in the block are valid
+            if (!currBlock.hasValidTransactions())
+                return false;
+
             // Check if the current block's hash is correct
             if (currBlock.hash !== currBlock.calculateHash())
                 return false;
@@ -102,18 +152,5 @@ class Blockchain {
     }
 }
 
-const simpleCoin = new Blockchain();
-
-simpleCoin.createTransaction(new Transaction('addr1', 'addr2', 50));
-simpleCoin.createTransaction(new Transaction('addr2', 'addr1', 100));
-simpleCoin.createTransaction(new Transaction('addr2', 'addr3', 150));
-
-console.log('\nStarting the miner...');
-simpleCoin.minePendingTransactions('simepleCoinAddreress');
-
-console.log('\nBalance of simpleCoin is', simpleCoin.getBalanceOfAddr('simepleCoinAddreress'));
-
-console.log('\nStarting the miner again...');
-simpleCoin.minePendingTransactions('simepleCoinAddreress');
-
-console.log('\nBalance of simpleCoin is', simpleCoin.getBalanceOfAddr('simepleCoinAddreress'));
+module.exports.Blockchain = Blockchain;
+module.exports.Transaction = Transaction;
